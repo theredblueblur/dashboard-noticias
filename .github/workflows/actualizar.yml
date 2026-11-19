@@ -1,0 +1,58 @@
+name: Actualizar noticias y publicar dashboard
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    # Diario a las 07:17 Ciudad de México (13:17 UTC, horario estándar UTC-6)
+    - cron: '17 13 * * *'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: macro-pulse-pages
+  cancel-in-progress: false
+
+jobs:
+  actualizar-y-publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Descargar archivos del repositorio
+        uses: actions/checkout@v4
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Recopilar noticias RSS
+        run: python actualizar_noticias.py
+      - name: Conservar noticias.json actualizado en el repositorio
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add noticias.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Actualizar titulares RSS'
+            git push
+          fi
+      - name: Preparar sitio web
+        run: |
+          test -f index.html || (echo 'Falta index.html. Créalo con ChatGPT y súbelo a la raíz.'; exit 1)
+          mkdir -p public
+          cp index.html noticias.json public/
+          touch public/.nojekyll
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Subir sitio para GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - name: Publicar sitio
+        id: deployment
+        uses: actions/deploy-pages@v4
